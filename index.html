@@ -3,98 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obscura | Serverless Encryption</title>
-    <meta name="description" content="Obscura is a fully client-side, serverless encrypted messaging application. Secure communication without accounts, servers, or manual key exchange using Web Crypto API.">
+    <title>Obscura | Shared Identity Messaging</title>
+    <meta name="description" content="Secure, serverless encrypted messaging using a shared identity model.">
     <link rel="stylesheet" href="style.css">
-    <!-- QR Code Generation Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- Crypto Module -->
+    <!-- No external libs needed for core crypto! -->
     <script src="crypto.js"></script>
 </head>
 <body>
     <main id="app">
-        <!-- SETUP VIEW: Generate Identity -->
-        <div id="setup-view" class="glass-card fade-in">
+        <header class="glass-card fade-in">
             <h1>Obscura</h1>
-            <p class="subtitle">Truly serverless, client-side encryption.</p>
+            <p class="subtitle">Shared Identity Encryption</p>
+        </header>
+
+        <!-- IDENTITY MANAGEMENT -->
+        <section id="identity-section" class="glass-card fade-in">
+            <label>Your Shared Identity (user_id)</label>
+            <div id="display-user-id" class="key-badge">Loading...</div>
             
-            <div style="text-align: center; margin-bottom: 20px;">
-                <p style="font-size: 0.9rem; color: var(--text-dim);">To begin, create your digital identity. Your keys never leave this device.</p>
+            <div class="btn-group">
+                <button id="btn-copy-id" class="btn btn-secondary">📋 Copy Identity</button>
+                <button id="btn-reset-id" class="btn btn-danger">🧨 Reset</button>
             </div>
 
-            <button id="btn-generate" class="btn btn-primary">
-                Generate My Identity
-            </button>
-        </div>
-
-        <!-- DASHBOARD VIEW: My Keys & Contacts -->
-        <div id="dashboard-view" class="glass-card fade-in hidden">
-            <h1>Identity Hub</h1>
-            <p class="subtitle">Share your QR code to pair with others.</p>
-            
-            <div id="identity-qr-container">
-                <!-- QR Code will be rendered here -->
-            </div>
-            
-            <div style="text-align: center;">
-                <label>Your Public Identity Hash</label>
-                <div id="my-public-key" class="key-badge">...</div>
-                <button id="btn-copy-my-key" class="copy-btn">
-                    <span>📋</span> Copy Public Key
-                </button>
-            </div>
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--glass-border);">
 
             <div class="input-group">
-                <label>Recipient's Public Key</label>
-                <input type="text" id="recipient-key-input" placeholder="Paste or scan recipient hash">
+                <label>Pair with Device (Import Identity)</label>
+                <input type="text" id="import-id-input" placeholder="Paste partner's user_id here">
+                <button id="btn-import-id" class="btn btn-secondary" style="margin-top: 10px;">Connect Identity</button>
             </div>
+        </section>
 
-            <button id="btn-start-chat" class="btn btn-primary">
-                Compose Secure Message
-            </button>
-
-            <button id="btn-reset" class="btn btn-secondary" style="margin-top: 10px; padding: 10px; font-size: 0.8rem;">
-                Reset My Identity
-            </button>
-        </div>
-
-        <!-- MESSAGING VIEW: Encrypt & Decrypt -->
-        <div id="messaging-view" class="glass-card fade-in hidden">
-            <h1 id="chat-title">Secure Inbox</h1>
-            
-            <div id="decryption-section" class="hidden" style="margin-bottom: 30px;">
-                <label>Incoming Message Detected</label>
-                <div class="chat-container" id="inbox-container">
-                    <!-- Decrypted message will appear here -->
-                </div>
+        <!-- INBOX (AUTO DECRYPT) -->
+        <section id="inbox-section" class="glass-card fade-in hidden">
+            <label>🔓 Decrypted Message Detected</label>
+            <div id="decrypted-output" class="chat-container">
+                <!-- Message will appear here -->
             </div>
+        </section>
 
+        <!-- COMPOSER -->
+        <section id="composer-section" class="glass-card fade-in">
             <div class="input-group">
-                <label>Your Secret Message</label>
-                <textarea id="message-input" rows="4" placeholder="Type something private..."></textarea>
+                <label>Compose Secure Message</label>
+                <textarea id="message-input" rows="4" placeholder="Type your secret message..."></textarea>
             </div>
+            
+            <button id="btn-encrypt" class="btn btn-primary">Encrypt & Generate Link</button>
 
-            <button id="btn-encrypt-share" class="btn btn-primary">
-                Encrypt & Generate Share Link
-            </button>
-
-            <div id="share-link-container" class="hidden" style="margin-top: 20px;">
-                <label>Secure Share Link</label>
+            <div id="link-container" class="hidden" style="margin-top: 20px;">
+                <label>Shareable Link</label>
                 <input type="text" id="share-link-output" readonly>
-                <p style="font-size: 0.7rem; color: var(--accent-secondary); margin-top: 5px;">Copy this link and send it via any channel.</p>
+                <p class="note">Direct recipients with the same identity can view this.</p>
+                <button id="btn-copy-link" class="btn btn-secondary" style="margin-top: 10px; width: auto; padding: 10px 15px;">📋 Copy Link</button>
             </div>
+        </section>
 
-            <button id="btn-back" class="btn btn-secondary" style="margin-top: 20px;">
-                Back to Dashboard
-            </button>
-        </div>
-
-        <div class="footer-text">
-            Protected by <span>AES-GCM-256</span> + <span>RSA-OAEP-2048</span>
-        </div>
+        <footer class="footer-text">
+            Serverless & Anonymous. Powered by <span>AES-256 (GCM)</span>
+        </footer>
     </main>
 
-    <!-- Main Logic -->
     <script src="app.js"></script>
 </body>
 </html>
