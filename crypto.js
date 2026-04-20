@@ -16,12 +16,28 @@ class ObscuraCrypto {
      * Get or Generate the shared User Identity (UUID).
      */
     static getUserId() {
-        let id = localStorage.getItem('obscura_user_id');
-        if (!id) {
-            id = crypto.randomUUID();
-            localStorage.setItem('obscura_user_id', id);
+        try {
+            let id = localStorage.getItem('obscura_user_id');
+            if (!id) {
+                // Use randomUUID if available, otherwise use a fallback
+                id = (crypto.randomUUID) ? crypto.randomUUID() : this.generateUUIDFallback();
+                localStorage.setItem('obscura_user_id', id);
+            }
+            return id;
+        } catch (e) {
+            console.error("Identity retrieval failed:", e);
+            return null;
         }
-        return id;
+    }
+
+    /**
+     * Fallback UUID generator for older browsers.
+     */
+    static generateUUIDFallback() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
 
     /**

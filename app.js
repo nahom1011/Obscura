@@ -4,10 +4,11 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
     // --- State & DOM Elements ---
-    let currentUserId = ObscuraCrypto.getUserId();
+    let currentUserId = null;
 
     const elements = {
         displayUserId: document.getElementById('display-user-id'),
+        // ... rest of elements are the same ...
         btnCopyId: document.getElementById('btn-copy-id'),
         btnResetId: document.getElementById('btn-reset-id'),
         
