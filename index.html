@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Obscura | Serverless Encryption</title>
+    <meta name="description" content="Obscura is a fully client-side, serverless encrypted messaging application. Secure communication without accounts, servers, or manual key exchange using Web Crypto API.">
     <link rel="stylesheet" href="style.css">
     <!-- QR Code Generation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -11,7 +12,7 @@
     <script src="crypto.js"></script>
 </head>
 <body>
-    <div id="app">
+    <main id="app">
         <!-- SETUP VIEW: Generate Identity -->
         <div id="setup-view" class="glass-card fade-in">
             <h1>Obscura</h1>
@@ -88,7 +89,7 @@
         <div class="footer-text">
             Protected by <span>AES-GCM-256</span> + <span>RSA-OAEP-2048</span>
         </div>
-    </div>
+    </main>
 
     <!-- Main Logic -->
     <script src="app.js"></script>
