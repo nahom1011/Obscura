@@ -1,6 +1,6 @@
 /**
  * Obscura Crypto Module
- * Handles Identity generation and E2EE using Web Crypto API.
+ * Handles Identity generation, E2EE, and Persistence.
  */
 
 const CRYPTO_CONFIG = {
@@ -16,6 +16,84 @@ const CRYPTO_CONFIG = {
     }
 };
 
+/**
+ * Robust Base64 Helpers for Binary Data
+ */
+class Base64 {
+    static fromBytes(bytes) {
+        const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
+        return btoa(binString);
+    }
+
+    static toBytes(base64) {
+        const binString = atob(base64);
+        return Uint8Array.from(binString, (m) => m.codePointAt(0));
+    }
+}
+
+/**
+ * Identity Persistence using IndexedDB
+ */
+class IdentityStore {
+    static DB_NAME = "ObscuraDB";
+    static STORE_NAME = "identity";
+
+    static async openDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.DB_NAME, 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                    db.createObjectStore(this.STORE_NAME);
+                }
+            };
+        });
+    }
+
+    static async saveIdentity(keyPair) {
+        const db = await this.openDB();
+        const tx = db.transaction(this.STORE_NAME, "readwrite");
+        const store = tx.objectStore(this.STORE_NAME);
+        store.put(keyPair.publicKey, "publicKey");
+        store.put(keyPair.privateKey, "privateKey");
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    static async loadIdentity() {
+        const db = await this.openDB();
+        const tx = db.transaction(this.STORE_NAME, "readonly");
+        const store = tx.objectStore(this.STORE_NAME);
+        const pubReq = store.get("publicKey");
+        const privReq = store.get("privateKey");
+
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => {
+                if (pubReq.result && privReq.result) {
+                    resolve({ publicKey: pubReq.result, privateKey: privReq.result });
+                } else {
+                    resolve(null);
+                }
+            };
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    static async clearIdentity() {
+        const db = await this.openDB();
+        const tx = db.transaction(this.STORE_NAME, "readwrite");
+        const store = tx.objectStore(this.STORE_NAME);
+        store.clear();
+        return new Promise((resolve) => {
+            tx.oncomplete = () => resolve();
+        });
+    }
+}
+
 class ObscuraCrypto {
     /**
      * Generate a new RSA Key Pair for the user identity.
@@ -23,10 +101,18 @@ class ObscuraCrypto {
     static async generateIdentity() {
         const keyPair = await window.crypto.subtle.generateKey(
             CRYPTO_CONFIG.rsa,
-            true, // extractable
+            false, // non-extractable (more secure, IndexedDB can still store them)
             ["encrypt", "decrypt"]
         );
+        await IdentityStore.saveIdentity(keyPair);
         return keyPair;
+    }
+
+    /**
+     * Try to load identity from persistence.
+     */
+    static async getPersistedIdentity() {
+        return await IdentityStore.loadIdentity();
     }
 
     /**
@@ -34,21 +120,25 @@ class ObscuraCrypto {
      */
     static async exportPublicKey(publicKey) {
         const exported = await window.crypto.subtle.exportKey("spki", publicKey);
-        return btoa(String.fromCharCode(...new Uint8Array(exported)));
+        return Base64.fromBytes(new Uint8Array(exported));
     }
 
     /**
      * Import a public key from Base64 SPKI format.
      */
     static async importPublicKey(base64Key) {
-        const binaryKey = Uint8Array.from(atob(base64Key), c => c.charCodeAt(0));
-        return await window.crypto.subtle.importKey(
-            "spki",
-            binaryKey,
-            CRYPTO_CONFIG.rsa,
-            true,
-            ["encrypt"]
-        );
+        try {
+            const binaryKey = Base64.toBytes(base64Key);
+            return await window.crypto.subtle.importKey(
+                "spki",
+                binaryKey,
+                CRYPTO_CONFIG.rsa,
+                true,
+                ["encrypt"]
+            );
+        } catch (e) {
+            throw new Error("Invalid public key format.");
+        }
     }
 
     /**
@@ -76,16 +166,16 @@ class ObscuraCrypto {
         // 3. Wrap (encrypt) the AES key with the recipient's RSA Public Key
         const exportedAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
         const wrappedKey = await window.crypto.subtle.encrypt(
-            CRYPTO_CONFIG.rsa,
+            { name: "RSA-OAEP" }, // Minimal param for encrypt/decrypt
             recipientPublicKey,
             exportedAesKey
         );
 
         // 4. Packetize the data
         return {
-            payload: btoa(String.fromCharCode(...new Uint8Array(encryptedMessage))),
-            key: btoa(String.fromCharCode(...new Uint8Array(wrappedKey))),
-            iv: btoa(String.fromCharCode(...new Uint8Array(iv)))
+            payload: Base64.fromBytes(new Uint8Array(encryptedMessage)),
+            key: Base64.fromBytes(new Uint8Array(wrappedKey)),
+            iv: Base64.fromBytes(new Uint8Array(iv))
         };
     }
 
@@ -94,13 +184,13 @@ class ObscuraCrypto {
      */
     static async decryptMessage(myPrivateKey, packet) {
         try {
-            const encryptedMessage = Uint8Array.from(atob(packet.payload), c => c.charCodeAt(0));
-            const wrappedKey = Uint8Array.from(atob(packet.key), c => c.charCodeAt(0));
-            const iv = Uint8Array.from(atob(packet.iv), c => c.charCodeAt(0));
+            const encryptedMessage = Base64.toBytes(packet.payload);
+            const wrappedKey = Base64.toBytes(packet.key);
+            const iv = Base64.toBytes(packet.iv);
 
             // 1. Unwrap the AES key using our Private Key
             const unwrappedKeyBuffer = await window.crypto.subtle.decrypt(
-                CRYPTO_CONFIG.rsa,
+                { name: "RSA-OAEP" },
                 myPrivateKey,
                 wrappedKey
             );
@@ -123,9 +213,13 @@ class ObscuraCrypto {
             const decoder = new TextDecoder();
             return decoder.decode(decryptedBuffer);
         } catch (error) {
-            console.error("Decryption failed:", error);
-            throw new Error("Could not decrypt message. Key mismatch or corrupted data.");
+            console.error("Internal Decryption Error:", error);
+            throw error; // Re-throw to be caught by app logic
         }
+    }
+
+    static async clearIdentity() {
+        await IdentityStore.clearIdentity();
     }
 
     /**

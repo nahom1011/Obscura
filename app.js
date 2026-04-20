@@ -5,7 +5,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
     // --- State & DOM Elements ---
     let myIdentity = null;
-    let recipientKey = null;
 
     const views = {
         setup: document.getElementById('setup-view'),
@@ -19,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnEncrypt: document.getElementById('btn-encrypt-share'),
         btnBack: document.getElementById('btn-back'),
         btnReset: document.getElementById('btn-reset'),
+        btnCopyMyKey: document.getElementById('btn-copy-my-key'),
         
         qrContainer: document.getElementById('identity-qr-container'),
         myPublicKeyDisplay: document.getElementById('my-public-key'),
@@ -32,6 +32,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         inboxContainer: document.getElementById('inbox-container')
     };
 
+    // --- Bootstrapping ---
+    async function init() {
+        try {
+            const persisted = await ObscuraCrypto.getPersistedIdentity();
+            if (persisted) {
+                myIdentity = persisted;
+                await renderIdentityUI();
+                showView('dashboard');
+                // Check if message in URL
+                handleIncomingMessage();
+            }
+        } catch (e) {
+            console.error("Initialization failed", e);
+        }
+    }
+
     // --- Navigation Helpers ---
     function showView(viewName) {
         Object.values(views).forEach(v => v.classList.add('hidden'));
@@ -41,41 +57,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Core Logic ---
 
     /**
-     * Create identity, update UI, and save to session (non-persistent as per requirement)
+     * Render the UI associated with the current identity
+     */
+    async function renderIdentityUI() {
+        if (!myIdentity) return;
+        const pubKeyBase64 = await ObscuraCrypto.exportPublicKey(myIdentity.publicKey);
+        
+        // Render QR Code
+        elements.qrContainer.innerHTML = "";
+        new QRCode(elements.qrContainer, {
+            text: pubKeyBase64,
+            width: 200,
+            height: 200,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+
+        elements.myPublicKeyDisplay.innerText = pubKeyBase64;
+    }
+
+    /**
+     * Create identity and update UI
      */
     async function createIdentity() {
-        elements.btnGenerate.innerText = "Generating security layer...";
+        elements.btnGenerate.innerText = "Securing Identity...";
         elements.btnGenerate.classList.add('generating');
 
         try {
-            const keyPair = await ObscuraCrypto.generateIdentity();
-            myIdentity = keyPair;
-            
-            const pubKeyBase64 = await ObscuraCrypto.exportPublicKey(keyPair.publicKey);
-            
-            // Render QR Code
-            elements.qrContainer.innerHTML = "";
-            new QRCode(elements.qrContainer, {
-                text: pubKeyBase64,
-                width: 200,
-                height: 200,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
-
-            elements.myPublicKeyDisplay.innerText = pubKeyBase64;
+            myIdentity = await ObscuraCrypto.generateIdentity();
+            await renderIdentityUI();
             
             // Transition
             setTimeout(() => {
                 showView('dashboard');
-                // Check if there was a message waiting in the URL
                 handleIncomingMessage();
             }, 800);
 
         } catch (error) {
             console.error("Identity generation failed", error);
-            alert("Security Error: Identity generation failed. Check browser support.");
+            alert("Security Error: Identity generation failed.");
         } finally {
             elements.btnGenerate.innerText = "Generate My Identity";
             elements.btnGenerate.classList.remove('generating');
@@ -83,34 +104,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Handle composing and encryption
+     * Copy key to clipboard
      */
-    async function handleEncryption() {
-        const msg = elements.messageInput.value;
-        const recipientPubKeyRaw = elements.recipientInput.value;
-
-        if (!msg) return alert("Please enter a message.");
-        if (!recipientPubKeyRaw) return alert("Please provide a recipient public key.");
-
-        try {
-            const recipientPubKey = await ObscuraCrypto.importPublicKey(recipientPubKeyRaw);
-            const packet = await ObscuraCrypto.encryptMessage(recipientPubKey, msg);
-            
-            const encodedPacket = ObscuraCrypto.encodePacket(packet);
-            const shareUrl = `${window.location.origin}${window.location.pathname}#msg=${encodedPacket}`;
-            
-            elements.shareLinkOutput.value = shareUrl;
-            elements.shareLinkContainer.classList.remove('hidden');
-            
-            // Visual feedback
-            elements.btnEncrypt.innerText = "Encrypted!";
-            elements.btnEncrypt.style.background = "var(--accent-secondary)";
-            elements.btnEncrypt.style.color = "black";
-            
-        } catch (error) {
-            console.error(error);
-            alert("Encryption failed. Verify the recipient's public key.");
-        }
+    function copyMyKey() {
+        const key = elements.myPublicKeyDisplay.innerText;
+        if (!key || key === "...") return;
+        
+        navigator.clipboard.writeText(key).then(() => {
+            const originalText = elements.btnCopyMyKey.innerHTML;
+            elements.btnCopyMyKey.innerHTML = "<span>✅</span> Copied!";
+            setTimeout(() => elements.btnCopyMyKey.innerHTML = originalText, 2000);
+        });
     }
 
     /**
@@ -121,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!hash.startsWith('#msg=')) return;
 
         if (!myIdentity) {
-            alert("Incoming message detected! Please generate your identity first to attempt decryption.");
+            // Wait for user to have an identity before trying to decrypt
             return;
         }
 
@@ -137,39 +141,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('chat-title').innerText = "Received Message";
             
         } catch (error) {
-            console.error(error);
-            alert("Could not decrypt message. It might be intended for a different recipient.");
+            console.error("Decryption Error:", error);
+            alert("Could not decrypt message. This link was likely intended for a different identity.");
         }
     }
 
     // --- Event Listeners ---
 
     elements.btnGenerate.addEventListener('click', createIdentity);
-
-    document.getElementById('btn-copy-my-key').addEventListener('click', () => {
-        const key = elements.myPublicKeyDisplay.innerText;
-        if (!key || key === "...") return;
-        
-        navigator.clipboard.writeText(key).then(() => {
-            const btn = document.getElementById('btn-copy-my-key');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = "<span>✅</span> Copied!";
-            setTimeout(() => btn.innerHTML = originalText, 2000);
-        });
-    });
+    elements.btnCopyMyKey.addEventListener('click', copyMyKey);
 
     elements.btnStartChat.addEventListener('click', () => {
         const input = elements.recipientInput.value.trim();
-        if (!input) {
-            alert("Please paste the recipient's public key first.");
-            return;
-        }
+        if (!input) return alert("Please paste the recipient's public key first.");
         
-        // Basic sanity check to prevent obvious errors
-        if (input.length < 100 || !/^[A-Za-z0-9+/=]+$/.test(input.replace(/\s/g, ''))) {
-            alert("Invalid public key format. Make sure you copied the full identity hash.");
-            return;
-        }
+        if (input.length < 100) return alert("Invalid public key format. Ensure you copied the full identity hash.");
 
         showView('messaging');
         elements.shareLinkContainer.classList.add('hidden');
@@ -179,6 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     elements.btnEncrypt.addEventListener('click', async () => {
         const msg = elements.messageInput.value;
+        // Clean up key input (remove hidden whitespace/newlines)
         const recipientPubKeyRaw = elements.recipientInput.value.trim().replace(/\s/g, '');
 
         if (!msg) return alert("Please enter a message.");
@@ -202,21 +189,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             
         } catch (error) {
             console.error("Encryption Details:", error);
-            alert(`Encryption failed: ${error.message || "Invalid public key"}. \n\nTip: Ensure you copied the ENTIRE key from the recipient.`);
+            alert(`Encryption failed: ${error.message || "Invalid public key"}`);
             elements.btnEncrypt.innerText = "Encrypt & Generate Share Link";
         }
     });
 
     elements.btnBack.addEventListener('click', () => showView('dashboard'));
 
-    elements.btnReset.addEventListener('click', () => {
-        if(confirm("This will destroy your current identity. Any messages intended for this key will be permanently unreadable. Proceed?")) {
+    elements.btnReset.addEventListener('click', async () => {
+        const warning = "DANGER: This will permanently destroy your current keys.\n\nYou will NOT be able to read any messages sent to this identity ever again.\n\nProceed?";
+        if(confirm(warning)) {
+            await ObscuraCrypto.clearIdentity();
             myIdentity = null;
             location.hash = "";
             location.reload();
         }
     });
 
-    // Handle incoming message even if page is already open (hash change)
     window.addEventListener('hashchange', handleIncomingMessage);
+
+    // Start boot sequence
+    init();
 });
