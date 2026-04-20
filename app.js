@@ -146,18 +146,66 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     elements.btnGenerate.addEventListener('click', createIdentity);
 
+    document.getElementById('btn-copy-my-key').addEventListener('click', () => {
+        const key = elements.myPublicKeyDisplay.innerText;
+        if (!key || key === "...") return;
+        
+        navigator.clipboard.writeText(key).then(() => {
+            const btn = document.getElementById('btn-copy-my-key');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "<span>✅</span> Copied!";
+            setTimeout(() => btn.innerHTML = originalText, 2000);
+        });
+    });
+
     elements.btnStartChat.addEventListener('click', () => {
-        if (!elements.recipientInput.value) {
-            alert("Enter a recipient key first.");
+        const input = elements.recipientInput.value.trim();
+        if (!input) {
+            alert("Please paste the recipient's public key first.");
             return;
         }
+        
+        // Basic sanity check to prevent obvious errors
+        if (input.length < 100 || !/^[A-Za-z0-9+/=]+$/.test(input.replace(/\s/g, ''))) {
+            alert("Invalid public key format. Make sure you copied the full identity hash.");
+            return;
+        }
+
         showView('messaging');
         elements.shareLinkContainer.classList.add('hidden');
         elements.btnEncrypt.innerText = "Encrypt & Generate Share Link";
         elements.btnEncrypt.removeAttribute('style');
     });
 
-    elements.btnEncrypt.addEventListener('click', handleEncryption);
+    elements.btnEncrypt.addEventListener('click', async () => {
+        const msg = elements.messageInput.value;
+        const recipientPubKeyRaw = elements.recipientInput.value.trim().replace(/\s/g, '');
+
+        if (!msg) return alert("Please enter a message.");
+        if (!recipientPubKeyRaw) return alert("Please provide a recipient public key.");
+
+        elements.btnEncrypt.innerText = "Processing...";
+
+        try {
+            const recipientPubKey = await ObscuraCrypto.importPublicKey(recipientPubKeyRaw);
+            const packet = await ObscuraCrypto.encryptMessage(recipientPubKey, msg);
+            
+            const encodedPacket = ObscuraCrypto.encodePacket(packet);
+            const shareUrl = `${window.location.origin}${window.location.pathname}#msg=${encodedPacket}`;
+            
+            elements.shareLinkOutput.value = shareUrl;
+            elements.shareLinkContainer.classList.remove('hidden');
+            
+            elements.btnEncrypt.innerText = "Encrypted!";
+            elements.btnEncrypt.style.background = "var(--accent-secondary)";
+            elements.btnEncrypt.style.color = "black";
+            
+        } catch (error) {
+            console.error("Encryption Details:", error);
+            alert(`Encryption failed: ${error.message || "Invalid public key"}. \n\nTip: Ensure you copied the ENTIRE key from the recipient.`);
+            elements.btnEncrypt.innerText = "Encrypt & Generate Share Link";
+        }
+    });
 
     elements.btnBack.addEventListener('click', () => showView('dashboard'));
 
